@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La Roue</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--tx:#1b1b1f;--mut:#6b6b76;--ac:#e8453c;--bd:#e2ded4}
+@media (prefers-color-scheme:dark){:root{--bg:#15151a;--card:#1f1f27;--tx:#f2f2f5;--mut:#9a9aa8;--bd:#33333f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:20px 16px 40px}
+h1{margin:0 0 4px;font-size:1.8rem}
+.sub{color:var(--mut);margin:0 0 18px;font-size:.9rem;display:inline-flex;align-items:center;gap:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:#2fb26a}.dot.off{background:#c9a227}
+.stage{position:relative;width:min(88vw,420px);aspect-ratio:1}
+canvas{width:100%;height:100%;display:block;border-radius:50%;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.ptr{position:absolute;top:-10px;left:50%;transform:translateX(-50%);border-left:14px solid transparent;border-right:14px solid transparent;border-top:28px solid var(--tx);z-index:2}
+.hub{position:absolute;inset:0;margin:auto;width:14%;aspect-ratio:1;border-radius:50%;background:var(--card);border:4px solid var(--tx);z-index:1}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:12px 22px;background:var(--ac);color:#fff;font-weight:700}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.sec{background:var(--card);color:var(--tx);border:1px solid var(--bd);padding:8px 12px;font-weight:500}
+#spin{margin-top:22px;font-size:1.1rem;padding:14px 38px}
+#win{min-height:2.4em;margin-top:14px;font-size:1.5rem;font-weight:800;text-align:center}
+.card{width:min(100%,420px);background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-top:18px}
+.card h2{margin:0 0 10px;font-size:1rem}
+.row{display:flex;gap:8px}
+input{flex:1;min-width:0;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+ul{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+li{background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:4px 6px 4px 12px;display:flex;align-items:center;gap:6px}
+li button{padding:0 8px;background:none;color:var(--mut);font-size:1.1rem}
+.msg{color:var(--mut);font-size:.85rem;margin-top:8px}
+.link{background:none;color:var(--mut);font-weight:400;text-decoration:underline;padding:0;margin-top:26px;font-size:.85rem}
+</style>
+</head>
+<body>
+<h1>🎡 La Roue</h1>
+<p class="sub"><span class="dot off" id="dot"></span><span id="status">Connexion…</span></p>
+<div class="stage"><div class="ptr"></div><div class="hub"></div><canvas id="wheel" width="840" height="840"></canvas></div>
+<button id="spin" hidden disabled>Tourner la roue</button>
+<div id="win" aria-live="polite"></div>
+
+<div class="card" id="admin" hidden>
+  <h2>Administration · <span id="count">0</span>/12 noms</h2>
+  <div class="row"><input id="name" maxlength="24" placeholder="Ajouter un nom"><button id="add" class="sec">Ajouter</button></div>
+  <ul id="list"></ul>
+  <div class="msg" id="amsg"></div>
+</div>
+
+<div class="card" id="login" hidden>
+  <h2>Connexion admin</h2>
+  <div class="row"><input id="pw" type="password" placeholder="Mot de passe"><button id="go" class="sec">Entrer</button></div>
+  <div class="msg" id="lmsg"></div>
+</div>
+<button class="link" id="showLogin">Espace admin</button>
+
+<script>
+const DURATION = 5000, MAX = 12;
+const COLORS = ["#e8453c","#f28c28","#f2c94c","#6cc551","#2fb2a0","#3b8de0","#6c5ce7","#b04fd3","#e84393","#8d6e63","#546e7a","#26a69a"];
+const $ = id => document.getElementById(id);
+const canvas = $("wheel"), ctx = canvas.getContext("2d");
+let names = [], anim = null, lastSpinId = null, offset = 0, password = sessionStorage.getItem("pw") || "";
+
+function draw(){
+  const s = canvas.width, c = s/2, n = names.length;
+  ctx.clearRect(0,0,s,s);
+  if(!n){ ctx.fillStyle="#888"; ctx.beginPath(); ctx.arc(c,c,c-4,0,7); ctx.fill(); ctx.fillStyle="#fff"; ctx.font="bold 40px system-ui"; ctx.textAlign="center"; ctx.fillText("Aucun nom",c,c+14); return; }
+  const seg = 2*Math.PI/n;
+  for(let i=0;i<n;i++){
+    const a0 = -Math.PI/2 + i*seg;
+    ctx.beginPath(); ctx.moveTo(c,c); ctx.arc(c,c,c-4,a0,a0+seg); ctx.closePath();
+    ctx.fillStyle = COLORS[i%COLORS.length]; ctx.fill(); ctx.strokeStyle="rgba(255,255,255,.7)"; ctx.lineWidth=3; ctx.stroke();
+    ctx.save(); ctx.translate(c,c); ctx.rotate(a0+seg/2); ctx.textAlign="right"; ctx.fillStyle="#fff";
+    ctx.font = "bold "+(n>8?34:40)+"px system-ui"; ctx.shadowColor="rgba(0,0,0,.45)"; ctx.shadowBlur=4;
+    ctx.fillText(names[i], c-40, 13); ctx.restore();
+  }
+}
+const setRot = d => canvas.style.transform = "rotate("+d+"deg)";
+const ease = t => 1 - Math.pow(1-t, 4);
+const now = () => Date.now() + offset;   // heure du serveur
+
+function runSpin(sp){
+  if(anim) cancelAnimationFrame(anim);
+  $("win").textContent = "";
+  const step = () => {
+    const t = (now() - sp.startedAt) / DURATION;
+    if(t >= 1){ setRot(sp.finalAngle); $("win").textContent = "🎉 " + sp.winnerName; anim = null; updateBtn(); return; }
+    setRot(sp.finalAngle * ease(Math.max(0,t))); anim = requestAnimationFrame(step); updateBtn();
+  };
+  step();
+}
+function onSpin(sp){
+  if(!sp || sp.id === lastSpinId) return;
+  lastSpinId = sp.id;
+  if(now() - sp.startedAt >= DURATION){ setRot(sp.finalAngle); $("win").textContent = "🎉 " + sp.winnerName; }
+  else runSpin(sp);
+}
+function updateBtn(){ $("spin").disabled = names.length < 2 || !!anim; }
+
+function connect(){
+  const es = new EventSource("/events");
+  es.onmessage = e => {
+    const st = JSON.parse(e.data);
+    offset = st.serverTime - Date.now();
+    $("dot").classList.remove("off"); $("status").textContent = "En direct";
+    if(JSON.stringify(st.names) !== JSON.stringify(names)){
+      names = st.names; if(!anim){ setRot(0); $("win").textContent = ""; lastSpinId = null; }
+    }
+    draw(); renderAdmin(); updateBtn();
+    if(st.spin) onSpin(st.spin); else if(!anim){ setRot(0); $("win").textContent = ""; }
+  };
+  es.onerror = () => { $("dot").classList.add("off"); $("status").textContent = "Reconnexion…"; };
+}
+
+async function api(path, body){
+  const r = await fetch(path, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ ...body, password }) });
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(d.error || "Erreur");
+  return d;
+}
+function renderAdmin(){
+  $("count").textContent = names.length;
+  const ul = $("list"); ul.innerHTML = "";
+  names.forEach((nm,i) => {
+    const li = document.createElement("li"), sp = document.createElement("span"); sp.textContent = nm;
+    const b = document.createElement("button"); b.textContent = "×"; b.onclick = () => save(names.filter((_,k)=>k!==i));
+    li.append(sp,b); ul.append(li);
+  });
+  $("add").disabled = $("name").disabled = names.length >= MAX;
+}
+async function save(list){ $("amsg").textContent = ""; try { await api("/api/names", { list }); } catch(e){ $("amsg").textContent = e.message; } }
+function addName(){
+  const v = $("name").value.trim(); if(!v) return;
+  if(names.some(x => x.toLowerCase() === v.toLowerCase())){ $("amsg").textContent = "Ce nom existe déjà."; return; }
+  $("name").value = ""; save([...names, v]);
+}
+async function enterAdmin(){
+  try { await api("/api/login", {}); sessionStorage.setItem("pw", password);
+    $("admin").hidden = false; $("spin").hidden = false; $("login").hidden = true; $("showLogin").hidden = true; updateBtn();
+  } catch(e){ password = ""; sessionStorage.removeItem("pw"); $("lmsg").textContent = e.message; }
+}
+$("add").onclick = addName;
+$("name").addEventListener("keydown", e => { if(e.key==="Enter") addName(); });
+$("spin").onclick = async () => { try { await api("/api/spin", {}); } catch(e){ $("win").textContent = e.message; } };
+$("showLogin").onclick = () => { $("login").hidden = false; $("pw").focus(); };
+$("go").onclick = () => { password = $("pw").value; enterAdmin(); };
+$("pw").addEventListener("keydown", e => { if(e.key==="Enter") $("go").click(); });
+
+draw(); connect(); if(password) enterAdmin();
+</script>
+</body>
+</html>
