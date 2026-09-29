@@ -29,6 +29,14 @@ ul{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px
 li{background:var(--bg);border:1px solid var(--bd);border-radius:20px;padding:4px 6px 4px 12px;display:flex;align-items:center;gap:6px}
 li button{padding:0 8px;background:none;color:var(--mut);font-size:1.1rem}
 .msg{color:var(--mut);font-size:.85rem;margin-top:8px}
+#pop{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:10;padding:16px}
+#pop.show{display:flex}
+#pop .box{background:var(--card);border-radius:20px;padding:32px 28px;text-align:center;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4);animation:pop .4s cubic-bezier(.2,1.4,.4,1)}
+#pop .emo{font-size:3rem}
+#pop .lbl{color:var(--mut);margin:8px 0 4px}
+#pop .who{font-size:2.2rem;font-weight:800;word-break:break-word;margin-bottom:22px}
+#confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:11}
+@keyframes pop{from{transform:scale(.6);opacity:0}to{transform:scale(1);opacity:1}}
 .link{background:none;color:var(--mut);font-weight:400;text-decoration:underline;padding:0;margin-top:26px;font-size:.85rem}
 </style>
 </head>
@@ -38,6 +46,9 @@ li button{padding:0 8px;background:none;color:var(--mut);font-size:1.1rem}
 <div class="stage"><div class="ptr"></div><div class="hub"></div><canvas id="wheel" width="840" height="840"></canvas></div>
 <button id="spin" hidden disabled>Tourner la roue</button>
 <div id="win" aria-live="polite"></div>
+
+<canvas id="confetti"></canvas>
+<div id="pop" role="dialog" aria-modal="true"><div class="box"><div class="emo">🎉</div><div class="lbl">Le gagnant est…</div><div class="who" id="popName"></div><button id="popClose">Fermer</button></div></div>
 
 <div class="card" id="admin" hidden>
   <h2>Administration · <span id="count">0</span>/12 noms</h2>
@@ -74,16 +85,60 @@ function draw(){
     ctx.fillText(names[i], c-40, 13); ctx.restore();
   }
 }
+const cv = $("confetti"), cx = cv.getContext("2d");
+const CONF_COLORS = ["#e8453c","#f28c28","#f2c94c","#6cc551","#2fb2a0","#3b8de0","#6c5ce7","#b04fd3","#e84393"];
+let parts = [], confRaf = null, confEnd = 0;
+function sizeConf(){ const r = window.devicePixelRatio || 1; cv.width = innerWidth*r; cv.height = innerHeight*r; cx.setTransform(r,0,0,r,0,0); }
+function addPiece(x, y, vx, vy){
+  parts.push({ x, y, vx, vy, w: 6+Math.random()*8, h: 8+Math.random()*10, rot: Math.random()*6.28, vr: (Math.random()-.5)*.35,
+    col: CONF_COLORS[Math.floor(Math.random()*CONF_COLORS.length)], sway: Math.random()*6.28, circle: Math.random()<.25 });
+}
+function burst(){ // canons à confettis depuis les deux coins du bas
+  for(let i=0;i<70;i++){
+    const a = (-Math.PI/2) + (Math.random()-.5)*.9, v = 11 + Math.random()*10;
+    addPiece(0, innerHeight, Math.cos(a)*v*Math.abs(Math.sin(a))*1.1 + 3, Math.sin(a)*v);
+    addPiece(innerWidth, innerHeight, -Math.cos(a)*v*Math.abs(Math.sin(a))*1.1 - 3, Math.sin(a)*v);
+  }
+}
+function confStep(){
+  const t = performance.now();
+  cx.clearRect(0,0,innerWidth,innerHeight);
+  if(t < confEnd && Math.random() < .9) for(let i=0;i<3;i++) addPiece(Math.random()*innerWidth, -20, (Math.random()-.5)*2, 2+Math.random()*3); // pluie du haut
+  parts = parts.filter(q => q.y < innerHeight + 40);
+  for(const q of parts){
+    q.vy += .18; q.vx *= .992; q.vy = Math.min(q.vy, 7); q.sway += .06;
+    q.x += q.vx + Math.sin(q.sway)*.8; q.y += q.vy; q.rot += q.vr;
+    cx.save(); cx.translate(q.x,q.y); cx.rotate(q.rot); cx.fillStyle = q.col;
+    if(q.circle){ cx.beginPath(); cx.arc(0,0,q.w/2,0,7); cx.fill(); } else cx.fillRect(-q.w/2,-q.h/2,q.w,q.h);
+    cx.restore();
+  }
+  if(t < confEnd || parts.length) confRaf = requestAnimationFrame(confStep);
+  else { confRaf = null; cx.clearRect(0,0,innerWidth,innerHeight); }
+}
+function startConfetti(){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  sizeConf(); parts = []; confEnd = performance.now() + 6000; burst();
+  setTimeout(burst, 700);
+  if(!confRaf) confRaf = requestAnimationFrame(confStep);
+}
+function stopConfetti(){ confEnd = 0; parts = []; if(confRaf){ cancelAnimationFrame(confRaf); confRaf = null; } cx.clearRect(0,0,innerWidth,innerHeight); }
+addEventListener("resize", () => { if(confRaf) sizeConf(); });
+
+function showPop(name){ $("popName").textContent = name; $("pop").classList.add("show"); startConfetti(); }
+const closePop = () => { $("pop").classList.remove("show"); stopConfetti(); };
+$("popClose").onclick = closePop;
+$("pop").addEventListener("click", e => { if(e.target === $("pop")) closePop(); });
+document.addEventListener("keydown", e => { if(e.key === "Escape") closePop(); });
 const setRot = d => canvas.style.transform = "rotate("+d+"deg)";
 const ease = t => 1 - Math.pow(1-t, 4);
 const now = () => Date.now() + offset;   // heure du serveur
 
 function runSpin(sp){
   if(anim) cancelAnimationFrame(anim);
-  $("win").textContent = "";
+  closePop(); $("win").textContent = "";
   const step = () => {
     const t = (now() - sp.startedAt) / DURATION;
-    if(t >= 1){ setRot(sp.finalAngle); $("win").textContent = "🎉 " + sp.winnerName; anim = null; updateBtn(); return; }
+    if(t >= 1){ setRot(sp.finalAngle); $("win").textContent = "🎉 " + sp.winnerName; anim = null; updateBtn(); showPop(sp.winnerName); return; }
     setRot(sp.finalAngle * ease(Math.max(0,t))); anim = requestAnimationFrame(step); updateBtn();
   };
   step();
