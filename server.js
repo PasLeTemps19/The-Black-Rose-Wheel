@@ -5,7 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "changeme";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "TheBlackRoseWheel";
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, "data.json");
 const MAX = 12, DURATION = 5000;
 
